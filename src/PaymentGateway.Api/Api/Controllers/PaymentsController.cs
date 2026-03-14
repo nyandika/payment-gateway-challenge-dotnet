@@ -22,6 +22,7 @@ public class PaymentsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ProcessPaymentResponse>> ProcessPaymentAsync(
         [FromBody] ProcessPaymentRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
         try
@@ -29,6 +30,7 @@ public class PaymentsController : ControllerBase
             var result = await _paymentService.ProcessAsync(
                 new ProcessPaymentCommand
                 {
+                    IdempotencyKey = idempotencyKey,
                     CardNumber = request.CardNumber,
                     ExpiryMonth = request.ExpiryMonth,
                     ExpiryYear = request.ExpiryYear,

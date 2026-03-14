@@ -15,8 +15,9 @@ public class PaymentServiceTests
             Authorized = true,
             AuthorizationCode = "auth-123"
         }));
+        var idempotencyRepository = new CapturingIdempotencyRepository();
         var repository = new CapturingPaymentRepository();
-        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
+        var service = new PaymentService(bankClient, idempotencyRepository, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.ProcessAsync(
             new ProcessPaymentCommand
@@ -53,8 +54,9 @@ public class PaymentServiceTests
         {
             Authorized = false
         }));
+        var idempotencyRepository = new CapturingIdempotencyRepository();
         var repository = new CapturingPaymentRepository();
-        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
+        var service = new PaymentService(bankClient, idempotencyRepository, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.ProcessAsync(ValidCommand(cardNumber: "2222405343248878"), CancellationToken.None);
 
@@ -73,8 +75,9 @@ public class PaymentServiceTests
             Authorized = true,
             AuthorizationCode = "auth-123"
         }));
+        var idempotencyRepository = new CapturingIdempotencyRepository();
         var repository = new CapturingPaymentRepository();
-        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
+        var service = new PaymentService(bankClient, idempotencyRepository, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.ProcessAsync(
             new ProcessPaymentCommand
@@ -115,14 +118,48 @@ public class PaymentServiceTests
         {
             Authorized = true
         }));
+        var idempotencyRepository = new CapturingIdempotencyRepository();
         var repository = new CapturingPaymentRepository(payment);
-        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
+        var service = new PaymentService(bankClient, idempotencyRepository, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.GetAsync(payment.Id, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(payment.Id, result.Id);
         Assert.Equal(payment.MaskedCardNumber, result.MaskedCardNumber);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WithSameIdempotencyKey_ReturnsCachedResultWithoutCallingBankTwice()
+    {
+        var bankClient = new CapturingBankClient(_ => Task.FromResult(new BankPaymentResult
+        {
+            Authorized = true,
+            AuthorizationCode = "auth-123"
+        }));
+        var idempotencyRepository = new CapturingIdempotencyRepository();
+        var repository = new CapturingPaymentRepository();
+        var service = new PaymentService(bankClient, idempotencyRepository, repository, NullLogger<PaymentService>.Instance);
+
+        var command = new ProcessPaymentCommand
+        {
+            IdempotencyKey = "payment-123",
+            CardNumber = "2222405343248877",
+            ExpiryMonth = 12,
+            ExpiryYear = DateTime.UtcNow.Year + 1,
+            Currency = "GBP",
+            Amount = 1050,
+            Cvv = "123"
+        };
+
+        var firstResult = await service.ProcessAsync(command, CancellationToken.None);
+        var secondResult = await service.ProcessAsync(command, CancellationToken.None);
+
+        Assert.Equal(1, bankClient.CallCount);
+        Assert.Equal(1, repository.AddCount);
+        Assert.NotNull(firstResult.Id);
+        Assert.Equal(firstResult.Id, secondResult.Id);
+        Assert.Equal(firstResult.Status, secondResult.Status);
     }
 
     private static ProcessPaymentCommand ValidCommand(string cardNumber) =>
@@ -186,6 +223,23 @@ public class PaymentServiceTests
         {
             _payments.TryGetValue(id, out var payment);
             return Task.FromResult(payment);
+        }
+    }
+
+    private sealed class CapturingIdempotencyRepository : IIdempotencyRepository
+    {
+        private readonly Dictionary<string, ProcessPaymentResult> _results = new(StringComparer.Ordinal);
+
+        public Task<ProcessPaymentResult?> GetAsync(string key, CancellationToken cancellationToken)
+        {
+            _results.TryGetValue(key, out var result);
+            return Task.FromResult(result);
+        }
+
+        public Task AddAsync(string key, ProcessPaymentResult result, CancellationToken cancellationToken)
+        {
+            _results.TryAdd(key, result);
+            return Task.CompletedTask;
         }
     }
 }

@@ -124,3 +124,21 @@ Expected result:
 - masked card number only
 - last four digits visible
 - no full card number returned
+
+### 6. Idempotent retry
+
+Open `POST /api/Payments`, click `Try it out`, and add a header:
+
+- `Idempotency-Key: retry-123`
+
+Submit an authorized payment, then submit the same request again with the same header value.
+
+Expected result:
+
+- both responses return the same payment `id`
+- the original completed result is replayed
+
+Note:
+
+- this minimal idempotency behavior lasts only while the app is running
+- `503` bank-unavailable failures are not cached

@@ -27,7 +27,7 @@ public class PaymentsControllerTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task ProcessesAnAuthorizedPaymentAndRetrievesIt()
     {
-        var createResponse = await _client.PostAsJsonAsync("/api/Payments", ValidRequest(cardNumber: "2222405343248877"));
+        var createResponse = await PostPaymentAsync(ValidRequest(cardNumber: "2222405343248877"));
         var createPayload = await createResponse.Content.ReadFromJsonAsync<ProcessPaymentResponse>(JsonOptions);
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -49,7 +49,7 @@ public class PaymentsControllerTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task ProcessesADeclinedPayment()
     {
-        var response = await _client.PostAsJsonAsync("/api/Payments", ValidRequest(cardNumber: "2222405343248878"));
+        var response = await PostPaymentAsync(ValidRequest(cardNumber: "2222405343248878"));
         var payload = await response.Content.ReadFromJsonAsync<ProcessPaymentResponse>(JsonOptions);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -62,7 +62,7 @@ public class PaymentsControllerTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task RejectsInvalidPayments()
     {
-        var response = await _client.PostAsJsonAsync("/api/Payments", new ProcessPaymentRequest
+        var response = await PostPaymentAsync(new ProcessPaymentRequest
         {
             CardNumber = "1234",
             ExpiryMonth = 1,
@@ -81,6 +81,28 @@ public class PaymentsControllerTests : IClassFixture<WebApplicationFactory<Progr
     }
 
     [Fact]
+    public async Task ReusesExistingPaymentForSameIdempotencyKey()
+    {
+        var firstResponse = await PostPaymentAsync(
+            ValidRequest(cardNumber: "2222405343248877"),
+            idempotencyKey: "same-payment");
+        var firstPayload = await firstResponse.Content.ReadFromJsonAsync<ProcessPaymentResponse>(JsonOptions);
+
+        var secondResponse = await PostPaymentAsync(
+            ValidRequest(cardNumber: "2222405343248877"),
+            idempotencyKey: "same-payment");
+        var secondPayload = await secondResponse.Content.ReadFromJsonAsync<ProcessPaymentResponse>(JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, secondResponse.StatusCode);
+        Assert.NotNull(firstPayload);
+        Assert.NotNull(secondPayload);
+        Assert.Equal(firstPayload.Id, secondPayload.Id);
+        Assert.Equal(firstPayload.Status, secondPayload.Status);
+        Assert.Equal(firstPayload.CardNumberLastFour, secondPayload.CardNumberLastFour);
+    }
+
+    [Fact]
     public async Task Returns404IfPaymentIsNotFound()
     {
         var response = await _client.GetAsync($"/api/Payments/{Guid.NewGuid()}");
@@ -91,7 +113,7 @@ public class PaymentsControllerTests : IClassFixture<WebApplicationFactory<Progr
     [Fact]
     public async Task Returns503WhenTheBankIsUnavailable()
     {
-        var response = await _client.PostAsJsonAsync("/api/Payments", ValidRequest(cardNumber: "2222405343248870"));
+        var response = await PostPaymentAsync(ValidRequest(cardNumber: "2222405343248870"));
         var payload = await response.Content.ReadFromJsonAsync<ProblemDetails>();
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
@@ -109,4 +131,19 @@ public class PaymentsControllerTests : IClassFixture<WebApplicationFactory<Progr
             Amount = 1050,
             Cvv = "123"
         };
+
+    private Task<HttpResponseMessage> PostPaymentAsync(ProcessPaymentRequest request, string? idempotencyKey = null)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, "/api/Payments")
+        {
+            Content = JsonContent.Create(request)
+        };
+
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            message.Headers.Add("Idempotency-Key", idempotencyKey);
+        }
+
+        return _client.SendAsync(message);
+    }
 }

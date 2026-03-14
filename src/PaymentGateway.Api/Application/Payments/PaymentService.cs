@@ -13,28 +13,49 @@ public class PaymentService
     };
 
     private readonly IAcquiringBankClient _acquiringBankClient;
+    private readonly IIdempotencyRepository _idempotencyRepository;
     private readonly ILogger<PaymentService> _logger;
     private readonly IPaymentRepository _paymentRepository;
 
     public PaymentService(
         IAcquiringBankClient acquiringBankClient,
+        IIdempotencyRepository idempotencyRepository,
         IPaymentRepository paymentRepository,
         ILogger<PaymentService> logger)
     {
         _acquiringBankClient = acquiringBankClient;
+        _idempotencyRepository = idempotencyRepository;
         _paymentRepository = paymentRepository;
         _logger = logger;
     }
 
     public async Task<ProcessPaymentResult> ProcessAsync(ProcessPaymentCommand command, CancellationToken cancellationToken)
     {
+        var idempotencyKey = command.IdempotencyKey?.Trim();
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            var existingResult = await _idempotencyRepository.GetAsync(idempotencyKey, cancellationToken);
+            if (existingResult != null)
+            {
+                _logger.LogInformation("Returning cached payment result for idempotency key {IdempotencyKey}.", idempotencyKey);
+                return existingResult;
+            }
+        }
+
         var validationErrors = Validate(command);
         if (validationErrors.Count > 0)
         {
             _logger.LogWarning(
                 "Payment request rejected by validation with {ErrorCount} errors.",
                 validationErrors.Count);
-            return ProcessPaymentResult.Rejected(validationErrors);
+            var rejectedResult = ProcessPaymentResult.Rejected(validationErrors);
+
+            if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            {
+                await _idempotencyRepository.AddAsync(idempotencyKey, rejectedResult, cancellationToken);
+            }
+
+            return rejectedResult;
         }
 
         var sanitizedCardNumber = command.CardNumber!.Trim();
@@ -75,7 +96,7 @@ public class PaymentService
             payment.Currency,
             payment.Amount);
 
-        return new ProcessPaymentResult
+        var result = new ProcessPaymentResult
         {
             Id = payment.Id,
             Status = payment.Status,
@@ -85,6 +106,13 @@ public class PaymentService
             Currency = payment.Currency,
             Amount = payment.Amount
         };
+
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            await _idempotencyRepository.AddAsync(idempotencyKey, result, cancellationToken);
+        }
+
+        return result;
     }
 
     public async Task<Payment?> GetAsync(Guid id, CancellationToken cancellationToken)

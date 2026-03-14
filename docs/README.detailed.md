@@ -31,6 +31,8 @@ For a valid payment request, the gateway:
 4. stores the payment result in an in-memory repository
 5. returns only masked card details to the caller
 
+The `POST /api/payments` endpoint also supports an optional `Idempotency-Key` header. If the same key is reused while the application is still running, the gateway returns the original completed result instead of processing the payment again.
+
 ## Technology choices
 
 - .NET 10
@@ -126,6 +128,17 @@ The gateway never returns the full card number.
 
 This keeps the implementation aligned with the exercise while avoiding unnecessary exposure of sensitive card data.
 
+### Idempotency
+
+`POST /api/payments` supports an optional `Idempotency-Key` header.
+
+Current behavior:
+
+- first request with a new key is processed normally
+- repeated request with the same key returns the original completed result
+- the idempotency store is in memory, so this behavior lasts only for the lifetime of the running app
+- `503` bank-unavailable failures are not cached, so a retry can attempt the bank call again
+
 ## API contract
 
 ### Process payment
@@ -189,6 +202,10 @@ Bank unavailable response:
 
 - status code: `503 Service Unavailable`
 - body uses `application/problem+json`
+
+Idempotent replay:
+
+- if the same `Idempotency-Key` is reused for a previously completed request, the API returns the original response body rather than creating a new payment
 
 ### Retrieve payment
 
@@ -293,6 +310,8 @@ Tradeoff:
 
 - payment data is lost when the process restarts
 
+The same applies to the minimal idempotency store in this exercise: retries are handled only while the app remains running.
+
 ### Why folder-based clean architecture
 
 The exercise is small enough that multiple projects would add overhead without much value. I kept the boundaries explicit in code and DI registration, while avoiding unnecessary project and package ceremony.
@@ -323,5 +342,6 @@ Integration tests cover:
 - rejected payment
 - payment retrieval
 - bank unavailable response
+- idempotent replay for repeated requests with the same key
 
 These integration tests run through the API and the live bank simulator.

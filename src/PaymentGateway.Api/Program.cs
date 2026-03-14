@@ -21,6 +21,7 @@ builder.Services.Configure<AcquiringBankOptions>(
     builder.Configuration.GetSection(AcquiringBankOptions.SectionName));
 
 builder.Services.AddSingleton<IPaymentRepository, InMemoryPaymentRepository>();
+builder.Services.AddSingleton<IIdempotencyRepository, InMemoryIdempotencyRepository>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddHttpClient<IAcquiringBankClient, AcquiringBankClient>();
 

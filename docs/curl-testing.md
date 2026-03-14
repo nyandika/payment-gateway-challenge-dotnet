@@ -142,3 +142,33 @@ Expected result:
 - masked card number only
 - last four digits visible
 - no full card number returned
+
+## 7. Idempotent retry
+
+Send the same request twice with the same `Idempotency-Key` header:
+
+```bash
+curl -i -k https://localhost:7092/api/payments \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: retry-123" \
+  -d '{
+    "cardNumber": "2222405343248877",
+    "expiryMonth": 12,
+    "expiryYear": 2027,
+    "currency": "GBP",
+    "amount": 1050,
+    "cvv": "123"
+  }'
+```
+
+Run the same command again with the same header value.
+
+Expected result:
+
+- both responses return the same payment `id`
+- the original completed result is replayed
+
+Note:
+
+- this minimal idempotency behavior lasts only while the app is running
+- `503` bank-unavailable failures are not cached

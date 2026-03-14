@@ -8,6 +8,7 @@ A simple payment gateway API built for the Checkout.com take-home exercise.
 - Retrieve a previously processed payment
 - Validate requests before calling the bank
 - Mask card details in responses
+- Replay the original result when the same `Idempotency-Key` is reused while the app is running
 
 ## Tech stack
 
@@ -52,6 +53,9 @@ Possible outcomes:
 - `201 Created` with status `Declined`
 - `400 Bad Request` with status `Rejected`
 - `503 Service Unavailable` if the bank simulator is unavailable
+
+You can also provide an optional `Idempotency-Key` header on `POST /api/payments`.
+If the same key is sent again while the app is still running, the gateway returns the original completed result instead of processing the payment again.
 
 ### Retrieve payment
 
@@ -196,6 +200,7 @@ Expected result:
 - Supported currencies are `GBP`, `USD`, and `EUR`
 - Amount must be a positive integer in minor units
 - CVV must be numeric and 3 to 4 digits long
+- Reusing the same `Idempotency-Key` returns the original completed result while the app remains running
 
 ## Tests
 
@@ -216,6 +221,7 @@ Integration tests cover:
 - API behavior for authorized, declined, and rejected payments
 - payment retrieval
 - bank unavailable responses
+- idempotent replay for repeated payment requests
 
 These integration tests run through the API and the live bank simulator.
 
