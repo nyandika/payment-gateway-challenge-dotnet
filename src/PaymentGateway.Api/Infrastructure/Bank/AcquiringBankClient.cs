@@ -9,11 +9,16 @@ namespace PaymentGateway.Api.Infrastructure.Bank;
 public class AcquiringBankClient : IAcquiringBankClient
 {
     private readonly HttpClient _httpClient;
+    private readonly ILogger<AcquiringBankClient> _logger;
 
-    public AcquiringBankClient(HttpClient httpClient, IOptions<AcquiringBankOptions> options)
+    public AcquiringBankClient(
+        HttpClient httpClient,
+        IOptions<AcquiringBankOptions> options,
+        ILogger<AcquiringBankClient> logger)
     {
         _httpClient = httpClient;
         _httpClient.BaseAddress = new Uri(options.Value.BaseUrl);
+        _logger = logger;
     }
 
     public async Task<BankPaymentResult> ProcessAsync(BankPaymentRequest request, CancellationToken cancellationToken)
@@ -32,6 +37,7 @@ public class AcquiringBankClient : IAcquiringBankClient
 
         if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
         {
+            _logger.LogWarning("Acquiring bank returned 503 Service Unavailable.");
             throw new BankUnavailableException("The acquiring bank is currently unavailable.");
         }
 

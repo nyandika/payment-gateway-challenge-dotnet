@@ -11,10 +11,12 @@ namespace PaymentGateway.Api.Api.Controllers;
 public class PaymentsController : ControllerBase
 {
     private readonly PaymentService _paymentService;
+    private readonly ILogger<PaymentsController> _logger;
 
-    public PaymentsController(PaymentService paymentService)
+    public PaymentsController(PaymentService paymentService, ILogger<PaymentsController> logger)
     {
         _paymentService = paymentService;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -50,6 +52,7 @@ public class PaymentsController : ControllerBase
 
             if (result.Status == PaymentStatus.Rejected)
             {
+                _logger.LogInformation("Payment request rejected by the gateway.");
                 return BadRequest(response);
             }
 
@@ -57,6 +60,7 @@ public class PaymentsController : ControllerBase
         }
         catch (BankUnavailableException exception)
         {
+            _logger.LogWarning(exception, "Payment request failed because the acquiring bank is unavailable.");
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
             {
                 Title = "Acquiring bank unavailable",
@@ -72,6 +76,7 @@ public class PaymentsController : ControllerBase
         var payment = await _paymentService.GetAsync(id, cancellationToken);
         if (payment is null)
         {
+            _logger.LogInformation("Payment {PaymentId} was not found.", id);
             return NotFound();
         }
 

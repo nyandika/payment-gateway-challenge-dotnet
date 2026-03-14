@@ -13,12 +13,17 @@ public class PaymentService
     };
 
     private readonly IAcquiringBankClient _acquiringBankClient;
+    private readonly ILogger<PaymentService> _logger;
     private readonly IPaymentRepository _paymentRepository;
 
-    public PaymentService(IAcquiringBankClient acquiringBankClient, IPaymentRepository paymentRepository)
+    public PaymentService(
+        IAcquiringBankClient acquiringBankClient,
+        IPaymentRepository paymentRepository,
+        ILogger<PaymentService> logger)
     {
         _acquiringBankClient = acquiringBankClient;
         _paymentRepository = paymentRepository;
+        _logger = logger;
     }
 
     public async Task<ProcessPaymentResult> ProcessAsync(ProcessPaymentCommand command, CancellationToken cancellationToken)
@@ -26,6 +31,9 @@ public class PaymentService
         var validationErrors = Validate(command);
         if (validationErrors.Count > 0)
         {
+            _logger.LogWarning(
+                "Payment request rejected by validation with {ErrorCount} errors.",
+                validationErrors.Count);
             return ProcessPaymentResult.Rejected(validationErrors);
         }
 
@@ -60,6 +68,13 @@ public class PaymentService
 
         await _paymentRepository.AddAsync(payment, cancellationToken);
 
+        _logger.LogInformation(
+            "Payment {PaymentId} processed with status {PaymentStatus} for {Currency} {Amount}.",
+            payment.Id,
+            payment.Status,
+            payment.Currency,
+            payment.Amount);
+
         return new ProcessPaymentResult
         {
             Id = payment.Id,
@@ -72,9 +87,18 @@ public class PaymentService
         };
     }
 
-    public Task<Payment?> GetAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<Payment?> GetAsync(Guid id, CancellationToken cancellationToken)
     {
-        return _paymentRepository.GetAsync(id, cancellationToken);
+        var payment = await _paymentRepository.GetAsync(id, cancellationToken);
+
+        if (payment is null)
+        {
+            _logger.LogInformation("Payment {PaymentId} was not found.", id);
+            return null;
+        }
+
+        _logger.LogInformation("Payment {PaymentId} was retrieved.", id);
+        return payment;
     }
 
     private static List<string> Validate(ProcessPaymentCommand command)

@@ -1,6 +1,7 @@
 using PaymentGateway.Api.Application.Abstractions;
 using PaymentGateway.Api.Application.Payments;
 using PaymentGateway.Api.Domain.Payments;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PaymentGateway.Api.Tests;
 
@@ -15,7 +16,7 @@ public class PaymentServiceTests
             AuthorizationCode = "auth-123"
         }));
         var repository = new CapturingPaymentRepository();
-        var service = new PaymentService(bankClient, repository);
+        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.ProcessAsync(
             new ProcessPaymentCommand
@@ -53,7 +54,7 @@ public class PaymentServiceTests
             Authorized = false
         }));
         var repository = new CapturingPaymentRepository();
-        var service = new PaymentService(bankClient, repository);
+        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.ProcessAsync(ValidCommand(cardNumber: "2222405343248878"), CancellationToken.None);
 
@@ -73,7 +74,7 @@ public class PaymentServiceTests
             AuthorizationCode = "auth-123"
         }));
         var repository = new CapturingPaymentRepository();
-        var service = new PaymentService(bankClient, repository);
+        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.ProcessAsync(
             new ProcessPaymentCommand
@@ -115,7 +116,7 @@ public class PaymentServiceTests
             Authorized = true
         }));
         var repository = new CapturingPaymentRepository(payment);
-        var service = new PaymentService(bankClient, repository);
+        var service = new PaymentService(bankClient, repository, NullLogger<PaymentService>.Instance);
 
         var result = await service.GetAsync(payment.Id, CancellationToken.None);
 
