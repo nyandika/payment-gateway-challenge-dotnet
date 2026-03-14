@@ -4,7 +4,7 @@ using PaymentGateway.Api.Api.Responses;
 using PaymentGateway.Api.Application.Payments;
 using PaymentGateway.Api.Domain.Payments;
 
-namespace PaymentGateway.Api.Controllers;
+namespace PaymentGateway.Api.Api.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
